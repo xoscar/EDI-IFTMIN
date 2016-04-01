@@ -1,6 +1,14 @@
 
 var EDI = function(string){
   this.string = string;
+  this.infoKeys = [
+    'BGM+700', 'BGM740',
+    'DTM+9','DTM+110',
+    'RFF+SRN','RFF+ADE','RFF+ACD','RFF+CU',
+    'NAD+EX','NAD+CN','NAD+CZ',
+    'PCI+',
+    'GIN+AW'
+  ];
 }
 
 EDI.parseEdiFileContents = function(text) {
@@ -10,38 +18,7 @@ EDI.parseEdiFileContents = function(text) {
   batches.forEach(function (batch) {
     var messages = batch.msegments();
     messages.forEach(function (message) {
-      result.push({
-        nameAndAdress: {
-          consignee : {
-            partyName: message.dateAndAddress_CN_partyName().toString(),
-            street:message.dateAndAddress_CN_street().toString(),
-            cityName:message.dateAndAddress_CN_cityName().toString(),
-            postalCode:message.dateAndAddress_CN_postalCode().toString(),
-            countryCode:message.dateAndAddress_CN_countryCode().toString(),
-          },
-          consignor: {
-            partyName: message.dateAndAddress_CZ_partyName().toString() || message.dateAndAddress_EX_partyName().toString(),
-            street:message.dateAndAddress_CZ_street().toString() || message.dateAndAddress_EX_street().toString(),
-            cityName:message.dateAndAddress_CZ_cityName().toString() || message.dateAndAddress_EX_cityName().toString(),
-            postalCode:message.dateAndAddress_CZ_postalCode().toString() || message.dateAndAddress_EX_postalCode().toString(),
-            countryCode:message.dateAndAddress_CZ_countryCode().toString() || message.dateAndAddress_EX_countryCode().toString(),
-          }
-        },
-        references: {
-          SRN:message.reference_SRN().toString(),
-          CU:message.reference_CU().toString(),
-          ADE:message.reference_ADE().toString(),
-          ACD:message.reference_ACD().toString(),
-        },
-        date: {
-          type_9:message.date_9().toString(),
-          type_110:message.date_110().toString(),
-        },
-        begginingOfMessage: {
-          type_740:message.beginningOfMessage_740().toString(),
-          type_700:message.beginningOfMessage_700().toString(),
-        }
-      });
+      result.push(message.getInfo());
     });
   });
   return result;
@@ -124,6 +101,48 @@ EDI.prototype.msegments = function(){
   return(msegments);
 }
 
+//gets all the info from the message
+EDI.prototype.getInfo = function () {
+  return  {
+    usedKeys: this.infoKeys,
+    unknownKeys: this.unknownKeys(),
+    message: this,
+    raw: this.toString(),
+    nameAndAdress: {
+      consignee : {
+        partyName: this.dateAndAddress_CN_partyName().toString(),
+        street:this.dateAndAddress_CN_street().toString(),
+        cityName:this.dateAndAddress_CN_cityName().toString(),
+        postalCode:this.dateAndAddress_CN_postalCode().toString(),
+        countryCode:this.dateAndAddress_CN_countryCode().toString(),
+      },
+      consignor: {
+        partyName: this.dateAndAddress_CZ_partyName().toString() || this.dateAndAddress_EX_partyName().toString(),
+        street:this.dateAndAddress_CZ_street().toString() || this.dateAndAddress_EX_street().toString(),
+        cityName:this.dateAndAddress_CZ_cityName().toString() || this.dateAndAddress_EX_cityName().toString(),
+        postalCode:this.dateAndAddress_CZ_postalCode().toString() || this.dateAndAddress_EX_postalCode().toString(),
+        countryCode:this.dateAndAddress_CZ_countryCode().toString() || this.dateAndAddress_EX_countryCode().toString(),
+      }
+    },
+    references: {
+      SRN:this.reference_SRN().toString(),
+      CU:this.reference_CU().toString(),
+      ADE:this.reference_ADE().toString(),
+      ACD:this.reference_ACD().toString(),
+    },
+    date: {
+      type_9:this.date_9().toString(),
+      type_110:this.date_110().toString(),
+    },
+    begginingOfthis: {
+      type_740:this.beginningOfMessage_740().toString(),
+      type_700:this.beginningOfMessage_700().toString(),
+    },
+    ids: this.packageIdentificators().map(function(e) {return e.toString()}),
+    goodsIdentityNumber: this.goodsIdentityNumber_AW().toString(),
+  };
+}
+
 /* External libraries for *isotime() functions */
 var moment = require('moment'); require('twix');
 
@@ -145,7 +164,7 @@ EDI.prototype.mtime    = function(){ return(this.segment('DTM+137').element(1).c
 EDI.prototype.moffset  = function(){ return(this.segment('DTM+735').component(1).toString().replace('?','').toString()); }
 EDI.prototype.misotime = function(){ return(moment(this.mtime() + this.moffset(), "YYYYMMDDHHmmZZ").format().toString()); }
 
-EDI.prototype.beginningOfMessage_740 = function() {return(this.segment('BGM+740').element(2)); }
+EDI.prototype.beginningOfMessage_740 = function(){ return(this.segment('BGM+740').element(2)); }
 EDI.prototype.beginningOfMessage_700 = function() {return(this.segment('BGM+700').element(2));}
 
 EDI.prototype.date_9 = function() {return(moment(this.segment('DTM+9').element(1).component(1), 'YYYYMMDDHHmmZZ').format().toString());}
@@ -162,7 +181,6 @@ EDI.prototype.dateAndAddress_CZ_cityName = function () {return(this.segment('NAD
 EDI.prototype.dateAndAddress_CZ_postalCode = function () {return(this.segment('NAD+CZ').element(8))};
 EDI.prototype.dateAndAddress_CZ_countryCode = function () {return(this.segment('NAD+CZ').element(9))};
 
-
 EDI.prototype.dateAndAddress_CN_partyName = function () {return(this.segment('NAD+CN').element(3))};
 EDI.prototype.dateAndAddress_CN_street = function () {return(this.segment('NAD+CN').element(4))};
 EDI.prototype.dateAndAddress_CN_cityName = function () {return(this.segment('NAD+CN').element(5))};
@@ -176,7 +194,7 @@ EDI.prototype.dateAndAddress_EX_postalCode = function () {return(this.segment('N
 EDI.prototype.dateAndAddress_EX_countryCode = function () {return(this.segment('NAD+EX').element(8))};
 
 EDI.prototype.packageIdentificators = function () { 
-  var element = this.segment('PCI+').element(1);
+  var element = this.segment('PCI+').element(2);
   var ids = [];
   for(var i = 0; i < 6; i++){
     ids.push(element.component(i));
@@ -225,6 +243,26 @@ EDI.prototype.test = function(){
   return(err);
 
 }
+
+EDI.prototype.unknownKeys = function () {
+  var _this = this;
+  var unknown = [];
+  _this.msegments()[0].string.split("'").forEach(function (row) {
+    var keys = row.match(/(\?.|[^\+])+|(\+\+)/g);
+    var found = _this.infoKeys.find(function (elem) {
+      var search = new RegExp(keys[0] + "\+[^\']+", "g");
+      var segment = search.exec(elem);
+      if(segment) return true;
+      return false;
+    });
+
+    if(!found) {
+      var alreadyIn = unknown.find(function (e) {return e == keys[0]});
+      if(!alreadyIn) unknown.push(keys[0]);
+    }
+  });
+  return unknown;
+};
 
 // Aliases
 EDI.prototype.e = EDI.prototype.elem  = EDI.prototype.element;
