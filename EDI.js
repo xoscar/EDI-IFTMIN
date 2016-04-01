@@ -3,6 +3,50 @@ var EDI = function(string){
   this.string = string;
 }
 
+EDI.parseEdiFileContents = function(text) {
+  var msg = new EDI(text);
+  var batches = msg.bsegments();
+  var result = [];
+  batches.forEach(function (batch) {
+    var messages = batch.msegments();
+    messages.forEach(function (message) {
+      result.push({
+        nameAndAdress: {
+          consignee : {
+            partyName: message.dateAndAddress_CN_partyName().toString(),
+            street:message.dateAndAddress_CN_street().toString(),
+            cityName:message.dateAndAddress_CN_cityName().toString(),
+            postalCode:message.dateAndAddress_CN_postalCode().toString(),
+            countryCode:message.dateAndAddress_CN_countryCode().toString(),
+          },
+          consignor: {
+            partyName: message.dateAndAddress_CZ_partyName().toString() || message.dateAndAddress_EX_partyName().toString(),
+            street:message.dateAndAddress_CZ_street().toString() || message.dateAndAddress_EX_street().toString(),
+            cityName:message.dateAndAddress_CZ_cityName().toString() || message.dateAndAddress_EX_cityName().toString(),
+            postalCode:message.dateAndAddress_CZ_postalCode().toString() || message.dateAndAddress_EX_postalCode().toString(),
+            countryCode:message.dateAndAddress_CZ_countryCode().toString() || message.dateAndAddress_EX_countryCode().toString(),
+          }
+        },
+        references: {
+          SRN:message.reference_SRN().toString(),
+          CU:message.reference_CU().toString(),
+          ADE:message.reference_ADE().toString(),
+          ACD:message.reference_ACD().toString(),
+        },
+        date: {
+          type_9:message.date_9().toString(),
+          type_110:message.date_110().toString(),
+        },
+        begginingOfMessage: {
+          type_740:message.beginningOfMessage_740().toString(),
+          type_700:message.beginningOfMessage_700().toString(),
+        }
+      });
+    });
+  });
+  return result;
+}
+
 /* Generic EDIFACT functions */
 
 // EDI parse lines
@@ -32,9 +76,10 @@ EDI.prototype.segment = function(token){
 
 // return n'th element (zero-index)
 EDI.prototype.element = function(n){  
-  // var elements = this.string.split('+');
   // split while handling escape characters: credits: http://stackoverflow.com/a/14334054
-  var elements = this.string.match(/(\?.|[^\+])+/g)
+  var elements = this.string.match(/(\?.|[^\+])+|(\+\+)/g);
+  
+  if(elements) elements = elements.map(function (elem){ return(elem =='++'?'':elem) });
   var element  = "";
   if(!elements || n > elements.length - 1) element = "";
   else element = elements[n];
@@ -43,9 +88,10 @@ EDI.prototype.element = function(n){
 
 // return n'th component (zero-index)
 EDI.prototype.component = function(n){
-  // var components = this.string.split(':');
   // split while handling escape characters: credits: http://stackoverflow.com/a/14334054
-  var components = this.string.match(/(\?.|[^:])+/g)
+  var components = this.string.match(/(\?.|[^\:])+|(\:\:)/g);
+  if(components) components = components.map(function (elem){ return(elem =='::'?'':elem) });
+
   var component = "";
   if(!components || n > components.length - 1) component = "";
   else component = components[n];
@@ -98,6 +144,47 @@ EDI.prototype.mproduct = function(){ return(this.segment('MKS').element(1).toStr
 EDI.prototype.mtime    = function(){ return(this.segment('DTM+137').element(1).component(1).toString()); }
 EDI.prototype.moffset  = function(){ return(this.segment('DTM+735').component(1).toString().replace('?','').toString()); }
 EDI.prototype.misotime = function(){ return(moment(this.mtime() + this.moffset(), "YYYYMMDDHHmmZZ").format().toString()); }
+
+EDI.prototype.beginningOfMessage_740 = function() {return(this.segment('BGM+740').element(2)); }
+EDI.prototype.beginningOfMessage_700 = function() {return(this.segment('BGM+700').element(2));}
+
+EDI.prototype.date_9 = function() {return(moment(this.segment('DTM+9').element(1).component(1), 'YYYYMMDDHHmmZZ').format().toString());}
+EDI.prototype.date_110 = function() {return(moment(this.segment('DTM+110').element(1).component(1), 'DDMMYY').format().toString());}
+
+EDI.prototype.reference_SRN = function () {return(this.segment('RFF+SRN').element(1).component(1))};
+EDI.prototype.reference_CU = function () {return(this.segment('RFF+CU').element(1).component(1))};
+EDI.prototype.reference_ACD = function () {return(this.segment('RFF+ACD').element(1).component(1))};
+EDI.prototype.reference_ADE = function () {return(this.segment('RFF+ADE').element(1).component(1))};
+
+EDI.prototype.dateAndAddress_CZ_partyName = function () {return(this.segment('NAD+CZ').element(4))};
+EDI.prototype.dateAndAddress_CZ_street = function () {return(this.segment('NAD+CZ').element(5))};
+EDI.prototype.dateAndAddress_CZ_cityName = function () {return(this.segment('NAD+CZ').element(6))};
+EDI.prototype.dateAndAddress_CZ_postalCode = function () {return(this.segment('NAD+CZ').element(8))};
+EDI.prototype.dateAndAddress_CZ_countryCode = function () {return(this.segment('NAD+CZ').element(9))};
+
+
+EDI.prototype.dateAndAddress_CN_partyName = function () {return(this.segment('NAD+CN').element(3))};
+EDI.prototype.dateAndAddress_CN_street = function () {return(this.segment('NAD+CN').element(4))};
+EDI.prototype.dateAndAddress_CN_cityName = function () {return(this.segment('NAD+CN').element(5))};
+EDI.prototype.dateAndAddress_CN_postalCode = function () {return(this.segment('NAD+CN').element(7))};
+EDI.prototype.dateAndAddress_CN_countryCode = function () {return(this.segment('NAD+CN').element(8))};
+
+EDI.prototype.dateAndAddress_EX_partyName = function () {return(this.segment('NAD+EX').element(3))};
+EDI.prototype.dateAndAddress_EX_street = function () {return(this.segment('NAD+EX').element(4))};
+EDI.prototype.dateAndAddress_EX_cityName = function () {return(this.segment('NAD+EX').element(5))};
+EDI.prototype.dateAndAddress_EX_postalCode = function () {return(this.segment('NAD+EX').element(7))};
+EDI.prototype.dateAndAddress_EX_countryCode = function () {return(this.segment('NAD+EX').element(8))};
+
+EDI.prototype.packageIdentificators = function () { 
+  var element = this.segment('PCI+').element(1);
+  var ids = [];
+  for(var i = 0; i < 6; i++){
+    ids.push(element.component(i));
+  }
+  return ids;
+}
+
+EDI.prototype.goodsIdentityNumber_AW =  function() {return(this.segment('GIN+AW').element(2).component(1))};
 
 /* Unit testing */
 EDI.prototype.test = function(){  
